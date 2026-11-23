@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bãi đỗ xe thông minh</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1f24; --muted:#6b7280; --line:#e5e7eb; --ok:#16a34a; --bad:#dc2626; --accent:#2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111418; --card:#1b2027; --text:#e8eaed; --muted:#9aa3af; --line:#2c333d; --ok:#4ade80; --bad:#f87171; --accent:#60a5fa; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.5 system-ui, "Segoe UI", sans-serif; }
+  header { padding:16px 20px; font-size:20px; font-weight:600; }
+  main { max-width:1100px; margin:0 auto; padding:0 16px 32px; display:grid; gap:16px; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  .card h2 { margin:0 0 12px; font-size:13px; font-weight:600; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+  .wide { grid-column:1 / -1; }
+  .stats { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; text-align:center; }
+  .stat b { display:block; font-size:30px; }
+  .stat span { color:var(--muted); font-size:13px; }
+  .bar { height:10px; background:var(--line); border-radius:99px; overflow:hidden; margin-top:14px; }
+  .bar i { display:block; height:100%; background:var(--accent); width:0; transition:width .3s; }
+  .last { display:flex; gap:14px; align-items:flex-start; }
+  .last img { width:200px; max-width:45%; border-radius:8px; border:1px solid var(--line); background:var(--line); }
+  .plate { font-size:26px; font-weight:700; letter-spacing:.05em; }
+  .tag { display:inline-block; padding:2px 10px; border-radius:99px; font-size:12px; font-weight:600; color:#fff; }
+  .tag.ok { background:var(--ok); } .tag.bad { background:var(--bad); }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); font-size:14px; }
+  th { color:var(--muted); font-weight:500; }
+  .sim { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .sim input { padding:8px 10px; border:1px solid var(--line); border-radius:8px; background:var(--bg); color:var(--text); width:160px; }
+  button { padding:8px 14px; border:0; border-radius:8px; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
+  button:disabled { opacity:.5; cursor:wait; }
+  .muted { color:var(--muted); font-size:13px; }
+  .scroll { overflow-x:auto; }
+</style>
+</head>
+<body>
+<header>🅿️ Bãi đỗ xe thông minh</header>
+<main>
+  <section class="card">
+    <h2>Tình trạng bãi</h2>
+    <div class="stats">
+      <div class="stat"><b id="occupied">–</b><span>Đang đỗ</span></div>
+      <div class="stat"><b id="free">–</b><span>Còn trống</span></div>
+      <div class="stat"><b id="capacity">–</b><span>Sức chứa</span></div>
+    </div>
+    <div class="bar"><i id="bar"></i></div>
+    <p class="muted" style="margin:12px 0 0">Hôm nay: <span id="today_in">0</span> xe vào · <span id="today_out">0</span> xe ra</p>
+  </section>
+
+  <section class="card wide">
+    <h2>Camera trực tiếp <span id="scanBadge" class="tag bad" style="display:none;margin-left:8px">ĐANG QUÉT BIỂN SỐ…</span></h2>
+    <img id="live" alt="Camera" style="width:100%;max-width:640px;border-radius:8px;border:1px solid var(--line);background:#000;display:block;min-height:120px">
+    <div class="sim" style="margin-top:10px">
+      <span class="muted" id="camInfo">Đang kết nối camera…</span>
+      <select id="camIdx" style="padding:8px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--text)">
+        <option value="0">Camera 0</option><option value="1">Camera 1</option><option value="2">Camera 2</option><option value="3">Camera 3</option>
+      </select>
+      <button id="camSet">Đổi camera</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Sự kiện gần nhất</h2>
+    <div class="last" id="last"><span class="muted">Chưa có sự kiện</span></div>
+  </section>
+
+  <section class="card wide">
+    <h2>Giả lập cảm biến (test không cần ESP32)</h2>
+    <div class="sim">
+      <input id="simPlate" placeholder="Biển số (để trống = dùng webcam)">
+      <button data-gate="auto">Xe tới cảm biến (tự động)</button>
+      <span class="muted" id="simMsg"></span>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Xe đang trong bãi</h2>
+    <div class="scroll"><table><thead><tr><th>Biển số</th><th>Giờ vào</th></tr></thead><tbody id="inside"></tbody></table></div>
+  </section>
+
+  <section class="card">
+    <h2>Nhật ký gần đây</h2>
+    <div class="scroll"><table><thead><tr><th>Giờ</th><th>Hướng</th><th>Biển số</th><th>Kết quả</th></tr></thead><tbody id="events"></tbody></table></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = iso => iso ? iso.replace("T", " ").slice(0, 19) : "";
+
+function cell(tr, text) { const td = document.createElement("td"); td.textContent = text; tr.appendChild(td); return td; }
+
+let camSynced = false;
+function renderCam(c) {
+  if (!c) return;
+  $("camInfo").textContent = c.ok ? "Đang dùng camera " + c.index + " (" + c.backend + ", " + c.size + ")"
+                                  : "Không mở được camera " + c.index + " — hãy thử chọn số khác hoặc đóng app đang dùng cam";
+  if (!camSynced) { $("camIdx").value = String(c.index); camSynced = true; }
+}
+
+function render(s) {
+  renderCam(s.camera);
+  $("scanBadge").style.display = s.scanning ? "inline-block" : "none";
+  $("occupied").textContent = s.occupied;
+  $("capacity").textContent = s.capacity;
+  $("free").textContent = Math.max(s.capacity - s.occupied, 0);
+  $("bar").style.width = Math.min(100, s.occupied / s.capacity * 100) + "%";
+  $("today_in").textContent = s.today_in;
+  $("today_out").textContent = s.today_out;
+
+  const ins = $("inside"); ins.replaceChildren();
+  s.inside.forEach(r => { const tr = document.createElement("tr"); cell(tr, r.plate); cell(tr, fmt(r.time_in)); ins.appendChild(tr); });
+  if (!s.inside.length) { const tr = document.createElement("tr"); const td = cell(tr, "Bãi đang trống"); td.colSpan = 2; td.className = "muted"; ins.appendChild(tr); }
+
+  const ev = $("events"); ev.replaceChildren();
+  s.events.forEach(e => {
+    const tr = document.createElement("tr");
+    cell(tr, fmt(e.time).slice(11));
+    cell(tr, e.gate === "in" ? "Vào" : e.gate === "out" ? "Ra" : "?");
+    cell(tr, e.plate || "—");
+    const td = cell(tr, (e.allowed ? "✔ " : "✘ ") + (e.message || ""));
+    td.style.color = e.allowed ? "var(--ok)" : "var(--bad)";
+    ev.appendChild(tr);
+  });
+
+  const last = $("last"); last.replaceChildren();
+  const e = s.events[0];
+  if (e) {
+    if (e.image) { const img = document.createElement("img"); img.src = e.image; img.alt = "Ảnh chụp"; last.appendChild(img); }
+    const box = document.createElement("div");
+    const p = document.createElement("div"); p.className = "plate"; p.textContent = e.plate || "Không đọc được"; box.appendChild(p);
+    const t = document.createElement("span"); t.className = "tag " + (e.allowed ? "ok" : "bad"); t.textContent = (e.gate === "in" ? "VÀO" : e.gate === "out" ? "RA" : "CHƯA RÕ") + " · " + (e.allowed ? "Cho phép" : "Từ chối"); box.appendChild(t);
+    const m = document.createElement("div"); m.className = "muted"; m.textContent = e.message + " · " + fmt(e.time); box.appendChild(m);
+    last.appendChild(box);
+  } else { last.innerHTML = '<span class="muted">Chưa có sự kiện</span>'; }
+}
+
+async function refresh() {
+  try { render(await (await fetch("/api/status")).json()); } catch (e) { /* server tạm thời không phản hồi */ }
+}
+
+document.querySelectorAll(".sim button").forEach(btn => btn.addEventListener("click", async () => {
+  const buttons = document.querySelectorAll(".sim button");
+  buttons.forEach(b => b.disabled = true);
+  $("simMsg").textContent = "Đang xử lý…";
+  try {
+    const r = await fetch("/api/simulate", { method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ gate: btn.dataset.gate, plate: $("simPlate").value || null }) });
+    const d = await r.json();
+    $("simMsg").textContent = (d.open ? "Mở cổng: " : "Từ chối: ") + d.line1 + " " + d.line2;
+  } catch (e) { $("simMsg").textContent = "Lỗi gọi server"; }
+  buttons.forEach(b => b.disabled = false);
+  refresh();
+}));
+
+// Luồng camera: tự nối lại nếu server khởi động lại hoặc mất kết nối
+const live = $("live");
+function startLive() { live.src = "/api/stream?t=" + Date.now(); }
+live.addEventListener("error", () => setTimeout(startLive, 2000));
+startLive();
+
+$("camSet").addEventListener("click", async () => {
+  await fetch("/api/camera", { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ index: parseInt($("camIdx").value, 10) }) });
+  $("camInfo").textContent = "Đang đổi camera…";
+});
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>
